@@ -25,6 +25,7 @@
 #include <ituGL/scene/ImGuiSceneVisitor.h>
 #include <imgui.h>
 #include <glm/gtx/transform.hpp>
+#include <iostream>
 
 PostFXSceneViewerApplication::PostFXSceneViewerApplication()
     : Application(1024, 1024, "Post FX Scene Viewer demo")
@@ -104,12 +105,11 @@ void PostFXSceneViewerApplication::InitializeCamera()
     // Set the camera scene node to be controlled by the camera controller
     m_cameraController.SetCamera(sceneCamera);
 }
-
 void PostFXSceneViewerApplication::InitializeLights()
 {
     // Create a directional light and add it to the scene
     std::shared_ptr<DirectionalLight> directionalLight = std::make_shared<DirectionalLight>();
-    directionalLight->SetDirection(glm::vec3(0.0f, -1.0f, -0.3f)); // It will be normalized inside the function
+    directionalLight->SetDirection(glm::vec3(0.0f, 0.2f, -0.3f)); // It will be normalized inside the function
     directionalLight->SetIntensity(3.0f);
     m_scene.AddSceneNode(std::make_shared<SceneLight>("directional light", directionalLight));
 
@@ -119,6 +119,7 @@ void PostFXSceneViewerApplication::InitializeLights()
     //pointLight->SetDistanceAttenuation(glm::vec2(5.0f, 10.0f));
     //m_scene.AddSceneNode(std::make_shared<SceneLight>("point light", pointLight));
 }
+
 
 void PostFXSceneViewerApplication::InitializeMaterials()
 {
@@ -214,56 +215,47 @@ void PostFXSceneViewerApplication::InitializeMaterials()
         m_deferredMaterial = std::make_shared<Material>(shaderProgramPtr, filteredUniforms);
     }
 
+
+    // My stuff
+
     // Grass material
     {
+        // Load and build shader
         std::vector<const char*> vertexShaderPaths;
         vertexShaderPaths.push_back("shaders/version330.glsl");
-        vertexShaderPaths.push_back("shaders/renderer/deferred_grass.vert");
+        vertexShaderPaths.push_back("shaders/default_grass.vert");
         Shader vertexShader = ShaderLoader(Shader::VertexShader).Load(vertexShaderPaths);
 
         std::vector<const char*> fragmentShaderPaths;
         fragmentShaderPaths.push_back("shaders/version330.glsl");
         fragmentShaderPaths.push_back("shaders/utils.glsl");
-        fragmentShaderPaths.push_back("shaders/lambert-ggx.glsl");
-        fragmentShaderPaths.push_back("shaders/lighting.glsl");
-        fragmentShaderPaths.push_back("shaders/renderer/deferred_grass.frag");
+        fragmentShaderPaths.push_back("shaders/default_grass.frag");
         Shader fragmentShader = ShaderLoader(Shader::FragmentShader).Load(fragmentShaderPaths);
 
         std::shared_ptr<ShaderProgram> shaderProgramPtr = std::make_shared<ShaderProgram>();
         shaderProgramPtr->Build(vertexShader, fragmentShader);
 
-        // Filter out uniforms that are not material properties
-        ShaderUniformCollection::NameSet filteredUniforms;
-        filteredUniforms.insert("InvViewMatrix");
-        filteredUniforms.insert("InvProjMatrix");
-        filteredUniforms.insert("WorldViewProjMatrix");
-        filteredUniforms.insert("LightIndirect");
-        filteredUniforms.insert("LightColor");
-        filteredUniforms.insert("LightPosition");
-        filteredUniforms.insert("LightDirection");
-        filteredUniforms.insert("LightAttenuation");
-
         // Get transform related uniform locations
-        ShaderProgram::Location invViewMatrixLocation = shaderProgramPtr->GetUniformLocation("InvViewMatrix");
-        ShaderProgram::Location invProjMatrixLocation = shaderProgramPtr->GetUniformLocation("InvProjMatrix");
+        ShaderProgram::Location worldViewMatrixLocation = shaderProgramPtr->GetUniformLocation("WorldViewMatrix");
         ShaderProgram::Location worldViewProjMatrixLocation = shaderProgramPtr->GetUniformLocation("WorldViewProjMatrix");
 
         // Register shader with renderer
         m_renderer.RegisterShaderProgram(shaderProgramPtr,
             [=](const ShaderProgram& shaderProgram, const glm::mat4& worldMatrix, const Camera& camera, bool cameraChanged)
             {
-                if (cameraChanged)
-                {
-                    shaderProgram.SetUniform(invViewMatrixLocation, glm::inverse(camera.GetViewMatrix()));
-                    shaderProgram.SetUniform(invProjMatrixLocation, glm::inverse(camera.GetProjectionMatrix()));
-                }
+                shaderProgram.SetUniform(worldViewMatrixLocation, camera.GetViewMatrix() * worldMatrix);
                 shaderProgram.SetUniform(worldViewProjMatrixLocation, camera.GetViewProjectionMatrix() * worldMatrix);
             },
-            m_renderer.GetDefaultUpdateLightsFunction(*shaderProgramPtr)
+            nullptr
         );
+        // Filter out uniforms that are not material properties
+        ShaderUniformCollection::NameSet filteredUniforms;
+        filteredUniforms.insert("WorldViewMatrix");
+        filteredUniforms.insert("WorldViewProjMatrix");
 
         // Create material
-        m_deferredGrassMaterial = std::make_shared<Material>(shaderProgramPtr, filteredUniforms);
+        m_grassMaterial = std::make_shared<Material>(shaderProgramPtr, filteredUniforms);
+        m_grassMaterial->SetUniformValue("Color", glm::vec3(1.0f));
     }
 }
 
@@ -280,9 +272,6 @@ void PostFXSceneViewerApplication::InitializeModels()
     m_deferredMaterial->SetUniformValue("EnvironmentTexture", m_skyboxTexture);
     m_deferredMaterial->SetUniformValue("EnvironmentMaxLod", maxLod);
 
-    m_deferredGrassMaterial->SetUniformValue("EnvironmentTexture", m_skyboxTexture);
-    m_deferredGrassMaterial->SetUniformValue("EnvironmentMaxLod", maxLod);
-
     // Configure loader
     ModelLoader loader(m_defaultMaterial);
 
@@ -292,40 +281,8 @@ void PostFXSceneViewerApplication::InitializeModels()
     // Flip vertically textures loaded by the model loader
     loader.GetTexture2DLoader().SetFlipVertical(true);
 
-    unsigned int amount = 1000;
-    glm::mat4* modelMatrices;
-    modelMatrices = new glm::mat4[amount];
-    srand(glfwGetTime()); // initialize random seed	
-    float radius = 50.0;
-    float offset = 2.5f;
-    for (unsigned int i = 0; i < amount; i++)
-    {
-        glm::mat4 model = glm::mat4(1.0f);
-        // 1. translation: displace along circle with 'radius' in range [-offset, offset]
-        float angle = (float)i / (float)amount * 360.0f;
-        float displacement = (rand() % 5);
-        float x = sin(angle) * radius + displacement;
-        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float y = displacement * 0.4f; // keep height of field smaller compared to width of x and z
-        displacement = (rand() % (int)(2 * offset * 100)) / 100.0f - offset;
-        float z = cos(angle) * radius + displacement;
-        model = glm::translate(model, glm::vec3(x, y, z));
-
-        // 2. scale: scale between 0.05 and 0.25f
-        float scale = (rand() % 20) / 100.0f + 0.05;
-        model = glm::scale(model, glm::vec3(scale));
-
-        // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
-        float rotAngle = (rand() % 360);
-        model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
-
-        // 4. now add to list of matrices
-        modelMatrices[i] = model;
-    }
-
     // Link vertex properties to attributes
     loader.SetMaterialAttribute(VertexAttribute::Semantic::Position, "VertexPosition");
-    loader.SetMaterialAttribute(VertexAttribute::Semantic::InstanceMatrix, "InstanceMatrix");
     loader.SetMaterialAttribute(VertexAttribute::Semantic::Normal, "VertexNormal");
     loader.SetMaterialAttribute(VertexAttribute::Semantic::Tangent, "VertexTangent");
     loader.SetMaterialAttribute(VertexAttribute::Semantic::Bitangent, "VertexBitangent");
@@ -337,12 +294,75 @@ void PostFXSceneViewerApplication::InitializeModels()
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::SpecularTexture, "SpecularTexture");
 
+    // Configure loader
+    ModelLoader grassLoader(m_grassMaterial);
+
+    // Create a new material copy for each submaterial
+    grassLoader.SetCreateMaterials(true);
+
+    // Flip vertically textures loaded by the model loader
+    grassLoader.GetTexture2DLoader().SetFlipVertical(true);
+
+    // Link vertex properties to attributes
+    grassLoader.SetMaterialAttribute(VertexAttribute::Semantic::Position, "VertexPosition");
+    grassLoader.SetMaterialAttribute(VertexAttribute::Semantic::Normal, "VertexNormal");
+    grassLoader.SetMaterialAttribute(VertexAttribute::Semantic::Tangent, "VertexTangent");
+    grassLoader.SetMaterialAttribute(VertexAttribute::Semantic::Bitangent, "VertexBitangent");
+    grassLoader.SetMaterialAttribute(VertexAttribute::Semantic::TexCoord0, "VertexTexCoord");
+
+    // Link material properties to uniforms
+    grassLoader.SetMaterialProperty(ModelLoader::MaterialProperty::DiffuseColor, "Color");
+    grassLoader.SetMaterialProperty(ModelLoader::MaterialProperty::DiffuseTexture, "ColorTexture");
+    grassLoader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
+    grassLoader.SetMaterialProperty(ModelLoader::MaterialProperty::SpecularTexture, "SpecularTexture");
+
+
     // Load models
     std::shared_ptr<Model> dirtPlane = loader.LoadShared("models/plane/plane.obj");
     m_scene.AddSceneNode(std::make_shared<SceneModel>("plane", dirtPlane));
 
-    std::shared_ptr<Model> grass = loader.LoadShared("models/grass/grass.obj");
+
+    std::shared_ptr<Model> grass = grassLoader.LoadShared("models/grass/grass.obj");
     m_scene.AddSceneNode(std::make_shared<SceneModel>("grass", grass));
+
+    // Attributes can take 4 components max in OpenGL. A 4x4 matrix will take 4 attribute locations
+    VertexAttribute columnAttribute(Data::Type::Float, 4);
+
+    srand(static_cast <unsigned> (time(0)));
+    std::vector<glm::mat4> offsets;
+    // Fill in matrices here ....
+    for (int i = 0; i < 1000; i++) {
+        glm::vec2 offset = glm::vec2(static_cast <float> (rand()) / static_cast <float> (RAND_MAX), static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
+        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 1, offset.y));
+        
+        offsets.push_back(offsetTransform);
+    }
+
+    Mesh& mesh = grass->GetMesh();
+
+    // Adding your vertex data in a new VBO
+    int vboIndex = mesh.AddVertexData<glm::mat4>(offsets);
+    VertexBufferObject& vbo = mesh.GetVertexBuffer(vboIndex);
+
+    // Get the existing VAO for your submesh
+    int vaoIndex = mesh.GetSubmesh(0).vaoIndex; // Assuming only one submesh
+    VertexArrayObject& vao = mesh.GetVertexArray(vaoIndex);
+
+    vao.Bind();
+    vbo.Bind();
+
+    int location = 5; //TODO: Find your attribute location by name
+    int offset = 0; // Data starts at the beginning of the buffer
+    int stride = 4 * columnAttribute.GetSize(); // Each vertex data is one matrix apart from each other
+    for (int i = 0; i < 4; i++)
+    {
+        vao.SetAttribute(location, columnAttribute, offset, stride);
+        location++;
+        offset += columnAttribute.GetSize();
+        glVertexAttribDivisor(5 + (1 * i), 1);
+    }
+    VertexBufferObject::Unbind();
+    VertexArrayObject::Unbind();
 }
 
 void PostFXSceneViewerApplication::InitializeFramebuffers()

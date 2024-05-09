@@ -32,6 +32,8 @@ private:
     void InitializeFramebuffers();
     void InitializeRenderer();
 
+    //std::shared_ptr<Material> CreateLitMaterial(std::string vertShader, std::string fragShader);
+
     std::shared_ptr<Material> CreatePostFXMaterial(const char* fragmentShaderPath, std::shared_ptr<Texture2DObject> sourceTexture = nullptr);
 
     Renderer::UpdateTransformsFunction GetFullscreenTransformFunction(std::shared_ptr<ShaderProgram> shaderProgramPtr) const;
@@ -57,7 +59,7 @@ private:
     // Materials
     std::shared_ptr<Material> m_defaultMaterial;
     std::shared_ptr<Material> m_deferredMaterial;
-    std::shared_ptr<Material> m_deferredGrassMaterial;
+    std::shared_ptr<Material> m_grassMaterial;
     std::shared_ptr<Material> m_composeMaterial;
     std::shared_ptr<Material> m_bloomMaterial;
 

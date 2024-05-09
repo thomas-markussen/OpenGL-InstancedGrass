@@ -125,16 +125,18 @@ private:
         Drawcall drawcall;
     };
 
-private:
-
+public:
+    // Had to make this public
     inline VertexBufferObject& GetVertexBuffer(unsigned int vboIndex) { return m_vbos[vboIndex]; }
+    inline Submesh& GetSubmesh(unsigned int submeshIndex) { return m_submeshes[submeshIndex]; }
+    inline VertexArrayObject& GetVertexArray(unsigned int vaoIndex) { return m_vaos[vaoIndex]; }
+
+private:
 
     inline ElementBufferObject& GetElementBuffer(unsigned int eboIndex) { return m_ebos[eboIndex]; }
 
-    inline VertexArrayObject& GetVertexArray(unsigned int vaoIndex) { return m_vaos[vaoIndex]; }
 
     inline const Submesh& GetSubmesh(unsigned int submeshIndex) const { return m_submeshes[submeshIndex]; }
-    inline Submesh& GetSubmesh(unsigned int submeshIndex) { return m_submeshes[submeshIndex]; }
 
     // Set a vertex attribute in a VAO, using the specified layout, and increases the location index according to the size of the attribute
     void SetupVertexAttribute(VertexArrayObject& vao, const VertexAttribute::Layout& attributeLayout, GLuint& location, const SemanticMap& locations);
@@ -151,6 +153,9 @@ private:
 
     // Submeshes contained in this mesh
     std::vector<Submesh> m_submeshes;
+
+    // Data for instancing
+    unsigned int m_instanceCount = 1;
 };
 
 template<typename T>
@@ -246,6 +251,7 @@ unsigned int Mesh::AddSubmesh(Drawcall::Primitive primitive, int firstVertex, in
     return AddSubmesh(vaoIndex, primitive, firstVertex, vertexCount, Data::Type::None);
 }
 
+// THIS ONE OMFG
 template<typename TIterator>
 unsigned int Mesh::AddSubmesh(Drawcall::Primitive primitive, int firstElement, int elementCount, Data::Type elementType,
     unsigned int vboIndex, unsigned int eboIndex,
@@ -255,6 +261,21 @@ unsigned int Mesh::AddSubmesh(Drawcall::Primitive primitive, int firstElement, i
 
     VertexArrayObject& vao = GetVertexArray(vaoIndex);
     vao.Bind();
+
+    //if (m_instanceCount != 1) {
+    //    std::vector<glm::vec2> translations;
+
+    //    float offset = 0.1f;
+
+    //    for (int i = 0; i < m_instanceCount; i++) {
+    //        float x = -20.0f + std::rand() / ((RAND_MAX / 1u) / 40.0f);
+    //        float y = -40.0f + std::rand() / ((RAND_MAX / 1u) / 80.0f);
+
+    //        translations.push_back(glm::vec2(x, y));
+    //    }
+
+    //    Gluint offset = 5;
+    //}
 
     const ElementBufferObject& ebo = GetElementBuffer(eboIndex);
     ebo.Bind();

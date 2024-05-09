@@ -39,7 +39,7 @@ void Drawcall::Draw() const
         // If there is an EBO, use glDrawElements
         assert(ElementBufferObject::IsSupportedType(m_eboType));
         const char* basePointer = nullptr; // Actual element pointer is in VAO
-        glDrawElements(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first);
-        //glDrawElementsInstanced(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first, 100);
+        //glDrawElements(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first);
+        glDrawElementsInstanced(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first, 1000);
     }
 }
