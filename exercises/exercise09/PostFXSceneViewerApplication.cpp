@@ -16,6 +16,9 @@
 #include <ituGL/geometry/Model.h>
 #include <ituGL/scene/SceneModel.h>
 
+#include <ituGL/scene/Transform.h>
+#include <glm/gtc/random.hpp> 
+
 #include <ituGL/renderer/SkyboxRenderPass.h>
 #include <ituGL/renderer/GBufferRenderPass.h>
 #include <ituGL/renderer/DeferredRenderPass.h>
@@ -114,10 +117,10 @@ void PostFXSceneViewerApplication::InitializeLights()
     m_scene.AddSceneNode(std::make_shared<SceneLight>("directional light", directionalLight));
 
     // Create a point light and add it to the scene
-    //std::shared_ptr<PointLight> pointLight = std::make_shared<PointLight>();
-    //pointLight->SetPosition(glm::vec3(0, 0, 0));
-    //pointLight->SetDistanceAttenuation(glm::vec2(5.0f, 10.0f));
-    //m_scene.AddSceneNode(std::make_shared<SceneLight>("point light", pointLight));
+    /*std::shared_ptr<PointLight> pointLight = std::make_shared<PointLight>();
+    pointLight->SetPosition(glm::vec3(0, 0, 0));
+    pointLight->SetDistanceAttenuation(glm::vec2(5.0f, 10.0f));
+    m_scene.AddSceneNode(std::make_shared<SceneLight>("point light", pointLight));*/
 }
 
 
@@ -167,7 +170,7 @@ void PostFXSceneViewerApplication::InitializeMaterials()
     {
         std::vector<const char*> vertexShaderPaths;
         vertexShaderPaths.push_back("shaders/version330.glsl");
-        vertexShaderPaths.push_back("shaders/renderer/deferred_grass.vert");
+        vertexShaderPaths.push_back("shaders/renderer/deferred.vert");
         Shader vertexShader = ShaderLoader(Shader::VertexShader).Load(vertexShaderPaths);
 
         std::vector<const char*> fragmentShaderPaths;
@@ -175,7 +178,7 @@ void PostFXSceneViewerApplication::InitializeMaterials()
         fragmentShaderPaths.push_back("shaders/utils.glsl");
         fragmentShaderPaths.push_back("shaders/lambert-ggx.glsl");
         fragmentShaderPaths.push_back("shaders/lighting.glsl");
-        fragmentShaderPaths.push_back("shaders/renderer/deferred_grass.frag");
+        fragmentShaderPaths.push_back("shaders/renderer/deferred.frag");
         Shader fragmentShader = ShaderLoader(Shader::FragmentShader).Load(fragmentShaderPaths);
 
         std::shared_ptr<ShaderProgram> shaderProgramPtr = std::make_shared<ShaderProgram>();
@@ -238,6 +241,7 @@ void PostFXSceneViewerApplication::InitializeMaterials()
         // Get transform related uniform locations
         ShaderProgram::Location worldViewMatrixLocation = shaderProgramPtr->GetUniformLocation("WorldViewMatrix");
         ShaderProgram::Location worldViewProjMatrixLocation = shaderProgramPtr->GetUniformLocation("WorldViewProjMatrix");
+        ShaderProgram::Location timeLocation = shaderProgramPtr->GetUniformLocation("Time");
 
         // Register shader with renderer
         m_renderer.RegisterShaderProgram(shaderProgramPtr,
@@ -245,6 +249,7 @@ void PostFXSceneViewerApplication::InitializeMaterials()
             {
                 shaderProgram.SetUniform(worldViewMatrixLocation, camera.GetViewMatrix() * worldMatrix);
                 shaderProgram.SetUniform(worldViewProjMatrixLocation, camera.GetViewProjectionMatrix() * worldMatrix);
+                shaderProgram.SetUniform(timeLocation, GetCurrentTime()); // Give the time for the wind shader
             },
             nullptr
         );
@@ -252,16 +257,18 @@ void PostFXSceneViewerApplication::InitializeMaterials()
         ShaderUniformCollection::NameSet filteredUniforms;
         filteredUniforms.insert("WorldViewMatrix");
         filteredUniforms.insert("WorldViewProjMatrix");
+        //filteredUniforms.insert("Time");
 
         // Create material
         m_grassMaterial = std::make_shared<Material>(shaderProgramPtr, filteredUniforms);
         m_grassMaterial->SetUniformValue("Color", glm::vec3(1.0f));
+        m_grassMaterial->SetUniformValue("Time", 0.0f);
     }
 }
 
 void PostFXSceneViewerApplication::InitializeModels()
 {
-    m_skyboxTexture = TextureCubemapLoader::LoadTextureShared("models/skybox/yoga_studio.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB16F);
+    m_skyboxTexture = TextureCubemapLoader::LoadTextureShared("models/skybox/sky.hdr", TextureObject::FormatRGB, TextureObject::InternalFormatRGB16F);
 
     m_skyboxTexture->Bind();
     float maxLod;
@@ -294,8 +301,11 @@ void PostFXSceneViewerApplication::InitializeModels()
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::SpecularTexture, "SpecularTexture");
 
+    unsigned int grassCount = 100000;
+
     // Configure loader
     ModelLoader grassLoader(m_grassMaterial);
+    grassLoader.SetInstanceCount(grassCount);
 
     // Create a new material copy for each submaterial
     grassLoader.SetCreateMaterials(true);
@@ -321,19 +331,35 @@ void PostFXSceneViewerApplication::InitializeModels()
     std::shared_ptr<Model> dirtPlane = loader.LoadShared("models/plane/plane.obj");
     m_scene.AddSceneNode(std::make_shared<SceneModel>("plane", dirtPlane));
 
+    // Offset grass transform to align with dirt plane
+    std::shared_ptr<Transform> grassTransform = std::make_shared<Transform>();
+    grassTransform->SetTranslation(glm::vec3(-5, 0, -5));
 
     std::shared_ptr<Model> grass = grassLoader.LoadShared("models/grass/grass.obj");
-    m_scene.AddSceneNode(std::make_shared<SceneModel>("grass", grass));
+    m_scene.AddSceneNode(std::make_shared<SceneModel>("grass", grass, grassTransform));
 
     // Attributes can take 4 components max in OpenGL. A 4x4 matrix will take 4 attribute locations
     VertexAttribute columnAttribute(Data::Type::Float, 4);
 
-    srand(static_cast <unsigned> (time(0)));
+    // Set bounds of our grass
+    glm::vec3 grassPosBounds(10, 0, 10); // Max deviation from origin
+    glm::vec2 grassRotBounds(-25, 25); // Min to Max
+    glm::vec2 grassScaleBounds(0.6f, 1.3f); // Min to Max
+
+    // Creating the offsets to insert into my vert shader for instancing
     std::vector<glm::mat4> offsets;
-    // Fill in matrices here ....
-    for (int i = 0; i < 1000; i++) {
-        glm::vec2 offset = glm::vec2(static_cast <float> (rand()) / static_cast <float> (RAND_MAX), static_cast <float> (rand()) / static_cast <float> (RAND_MAX));
-        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 1, offset.y));
+    for (int i = 0; i < grassCount; i++) {
+        // Position
+        glm::vec3 offset(0, 0, 0);
+        offset.x = glm::linearRand(0.0f, grassPosBounds.x);
+        offset.z = glm::linearRand(0.0f, grassPosBounds.z);
+
+        // Scale
+        float scaleFactor = glm::linearRand(grassScaleBounds.x, grassScaleBounds.y);
+        glm::mat4 scaleTransform = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor, scaleFactor * 3, scaleFactor));
+
+        // Combine all transformations
+        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 0, offset.z)) * scaleTransform;
         
         offsets.push_back(offsetTransform);
     }

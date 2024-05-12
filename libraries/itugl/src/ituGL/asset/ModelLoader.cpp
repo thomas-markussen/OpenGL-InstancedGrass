@@ -90,6 +90,9 @@ Model ModelLoader::Load(const char* path)
     {
         model.SetMesh(std::make_shared<Mesh>());
         Mesh& mesh = model.GetMesh();
+        
+        mesh.SetInstanceCount(m_instanceCount); // Set Instancing
+
         for (unsigned int meshIndex = 0; meshIndex < scene->mNumMeshes; ++meshIndex)
         {
             aiMesh& meshData = *scene->mMeshes[meshIndex];

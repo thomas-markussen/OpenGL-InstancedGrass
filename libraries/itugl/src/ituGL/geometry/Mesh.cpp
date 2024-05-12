@@ -32,7 +32,7 @@ unsigned int Mesh::AddSubmesh(unsigned int vaoIndex, const Drawcall& drawcall)
 unsigned int Mesh::AddSubmesh(unsigned int vaoIndex,
     Drawcall::Primitive primitive, GLint first, GLsizei count, Data::Type eboType)
 {
-    return AddSubmesh(vaoIndex, Drawcall(primitive, count, eboType, first));
+    return AddSubmesh(vaoIndex, Drawcall(primitive, count, eboType, first, m_instanceCount));
 }
 
 // Bind the VAO and render the drawcall of the submesh

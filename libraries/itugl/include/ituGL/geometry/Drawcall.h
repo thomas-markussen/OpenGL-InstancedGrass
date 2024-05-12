@@ -26,7 +26,7 @@ public:
 public:
     Drawcall();
     Drawcall(Primitive primitive, GLsizei count, GLint first = 0);
-    Drawcall(Primitive primitive, GLsizei count, Data::Type eboType, GLint first = 0);
+    Drawcall(Primitive primitive, GLsizei count, Data::Type eboType, GLint first = 0, unsigned int instanceCount = 1);
 
     // Check if the drawcall is valid
     inline bool IsValid() const { return m_primitive != Primitive::Invalid && m_count > 0; }
@@ -46,4 +46,6 @@ private:
 
     // Data type of the elements in the EBO (int, uint, short, byte, etc.). A value of None means no EBO
     Data::Type m_eboType;
+
+    unsigned int m_instanceCount = 1; // ADDED BY ME
 };

@@ -11,10 +11,12 @@ out vec3 ViewNormal;
 out vec3 ViewTangent;
 out vec3 ViewBitangent;
 out vec2 TexCoord;
+out vec3 FragPosition; // Need this for color blending
 
 //Uniforms
 uniform mat4 WorldViewMatrix;
 uniform mat4 WorldViewProjMatrix;
+uniform float Time;
 
 void main()
 {
@@ -30,6 +32,20 @@ void main()
 	// texture coordinates
 	TexCoord = VertexTexCoord;
 
+	vec3 pos = VertexPosition;
+
+	// Calculate wind sway effect
+    float windStrength = 1.4; // Adjust this value to control wind intensity
+    float swayFrequency = 0.3; // Adjust this value to control wind sway speed
+    float swayAmount = sin(VertexPosition.z * swayFrequency + Time) * windStrength;
+
+    // Adjust swayAmount based on height of grass
+    float heightFactor = 1.0 - (1.0 - VertexPosition.y);
+    swayAmount *= heightFactor;
+
+    pos.z += swayAmount;
+
 	// final vertex position (for opengl rendering, not for lighting)
-	gl_Position = WorldViewProjMatrix * InstanceMatrix * vec4(VertexPosition, 1.0);
+	gl_Position = WorldViewProjMatrix * InstanceMatrix * vec4(pos, 1.0);
+	FragPosition = VertexPosition;
 }

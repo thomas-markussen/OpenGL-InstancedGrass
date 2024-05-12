@@ -39,6 +39,8 @@ public:
     // Maps a material property to a uniform in the shader program used by the material
     bool SetMaterialProperty(MaterialProperty materialProperty, const char* uniformName);
 
+    void SetInstanceCount(unsigned int count) { m_instanceCount = count; }
+
 private:
     // Generate a submesh from the loaded mesh data
     void GenerateSubmesh(Mesh& mesh, const aiMesh& meshData);
@@ -84,6 +86,8 @@ private:
 
     // Texture loader to cache already loaded shared textures
     mutable Texture2DLoader m_textureLoader;
+
+    unsigned int m_instanceCount = 1;
 };
 
 enum class ModelLoader::MaterialProperty

@@ -14,8 +14,8 @@ Drawcall::Drawcall(Primitive primitive, GLsizei count, GLint first)
 {
 }
 
-Drawcall::Drawcall(Primitive primitive, GLsizei count, Data::Type eboType, GLint first)
-    : m_primitive(primitive), m_first(first), m_count(count), m_eboType(eboType)
+Drawcall::Drawcall(Primitive primitive, GLsizei count, Data::Type eboType, GLint first, unsigned int instanceCount)
+    : m_primitive(primitive), m_first(first), m_count(count), m_eboType(eboType), m_instanceCount(instanceCount)
 {
     assert(primitive != Primitive::Invalid);
     assert(first >= 0);
@@ -39,7 +39,6 @@ void Drawcall::Draw() const
         // If there is an EBO, use glDrawElements
         assert(ElementBufferObject::IsSupportedType(m_eboType));
         const char* basePointer = nullptr; // Actual element pointer is in VAO
-        //glDrawElements(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first);
-        glDrawElementsInstanced(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first, 1000);
+        glDrawElementsInstanced(primitive, m_count, static_cast<GLenum>(m_eboType), basePointer + m_first, m_instanceCount); // ADDED FOR INSTANCING
     }
 }
