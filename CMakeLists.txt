@@ -36,7 +36,7 @@ endif()
 # ---------------------------------------------------------------------------------
 # Cmake projects
 # ---------------------------------------------------------------------------------
-project(ITU-graphics-programming)
+project(instanced-waving-grass)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -55,4 +55,4 @@ include_directories(
 )
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/libraries)
-add_subdirectory(${CMAKE_SOURCE_DIR}/exercises)
+add_subdirectory(${CMAKE_SOURCE_DIR}/custom)
