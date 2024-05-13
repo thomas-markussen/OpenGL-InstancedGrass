@@ -18,6 +18,14 @@ uniform mat4 WorldViewMatrix;
 uniform mat4 WorldViewProjMatrix;
 uniform float Time;
 
+// Grass Specifics
+uniform float WindStrength;
+uniform float SwayFrequency;
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+}
+
 void main()
 {
 	// normal in view space (for lighting computation)
@@ -34,13 +42,11 @@ void main()
 
 	vec3 pos = VertexPosition;
 
-	// Calculate wind sway effect
-    float windStrength = 1.4; // Adjust this value to control wind intensity
-    float swayFrequency = 0.3; // Adjust this value to control wind sway speed
-    float swayAmount = sin(VertexPosition.z * swayFrequency + Time) * windStrength;
+	// Calculate wind sway effect and add a bias based on the height of the Vertex to bend the grass
+    float swayAmount = sin(VertexPosition.z * SwayFrequency + Time + random(vec2(gl_InstanceID))) * WindStrength * VertexPosition.y;
 
     // Adjust swayAmount based on height of grass
-    float heightFactor = 1.0 - (1.0 - VertexPosition.y);
+    float heightFactor = (1.0 - (1.0 - VertexPosition.y));
     swayAmount *= heightFactor;
 
     pos.z += swayAmount;

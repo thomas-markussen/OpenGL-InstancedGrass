@@ -16,19 +16,19 @@ uniform sampler2D ColorTexture;
 uniform sampler2D NormalTexture;
 uniform sampler2D SpecularTexture;
 
+// Grass gradient
+uniform vec3 BottomColor;
+uniform vec3 TopColor;
+uniform float GradientBias;
+
 void main()
 {
-	//FragAlbedo = vec4(Color.rgb * texture(ColorTexture, TexCoord).rgb, 1);
-	//FragAlbedo = vec4(Color.rgb * vec4(0,1,0,0).rgb, 1);
+	float gradient = FragPosition.y / GradientBias; // Calculate gradient based on y position
+    vec3 finalColor = mix(BottomColor, TopColor, gradient); // Interpolate between colors based on gradient
+    FragAlbedo = vec4(finalColor, 1);
 
 	vec3 viewNormal = SampleNormalMap(NormalTexture, TexCoord, normalize(ViewNormal), normalize(ViewTangent), normalize(ViewBitangent));
 	FragNormal = viewNormal.xy;
 
 	FragOthers = texture(SpecularTexture, TexCoord);
-
-	float maxHeight = 1.0;
-
-	float gradient = FragPosition.y / maxHeight; // Calculate gradient based on y position
-    vec3 finalColor = mix(vec3(1,0,0), vec3(0,1,0), gradient); // Interpolate between colors based on gradient
-    FragAlbedo = vec4(finalColor, 1.0);
 }

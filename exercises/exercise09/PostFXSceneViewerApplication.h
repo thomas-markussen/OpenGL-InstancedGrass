@@ -32,7 +32,16 @@ private:
     void InitializeFramebuffers();
     void InitializeRenderer();
 
-    //std::shared_ptr<Material> CreateLitMaterial(std::string vertShader, std::string fragShader);
+    /// <summary>
+    /// Initializes instancing for a mesh. Remember to use SetInstancingCount in the ModelLoader of the provided mesh for this to work.
+    /// Yes, the parameters should have been wrapped by a struct, and should probably be using a Builder or Factory for all this.
+    /// </summary>
+    /// <param name="mesh"></param>
+    /// <param name="tBounds">The bounds of your translations</param>
+    /// <param name="rBounds">The bounds of your rotations (min -> max)</param>
+    /// <param name="sBounds">The bounds of your scale (min -> max)</param>
+    /// <param name="attr">The VertexAttribute of the mat4 (4 * 4 floats)</param>
+    void InitializeInstancing(Mesh& mesh, unsigned int instanceCount, glm::vec3 tBounds, glm::vec2 rBounds, glm::vec2 sBounds, VertexAttribute attr);
 
     std::shared_ptr<Material> CreatePostFXMaterial(const char* fragmentShaderPath, std::shared_ptr<Texture2DObject> sourceTexture = nullptr);
 
@@ -79,4 +88,12 @@ private:
     int m_blurIterations;
     glm::vec2 m_bloomRange;
     float m_bloomIntensity;
+
+    // Grass configuration
+    float m_windStrength;
+    float m_windSwayFreq;
+
+    glm::vec3 m_bottomColor;
+    glm::vec3 m_topColor;
+    float m_gradientBias;
 };

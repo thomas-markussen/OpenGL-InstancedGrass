@@ -42,6 +42,11 @@ PostFXSceneViewerApplication::PostFXSceneViewerApplication()
     , m_blurIterations(1)
     , m_bloomRange(1.0f, 2.0f)
     , m_bloomIntensity(1.0f)
+    , m_windStrength(2.5f)
+    , m_windSwayFreq(5.0f)
+    , m_bottomColor(glm::vec3(0.0f, 0.0f, 0.0f))
+    , m_topColor(glm::vec3(0.7f, 0.2f, 0.2f))
+    , m_gradientBias(0.25f)
 {
 }
 
@@ -112,17 +117,10 @@ void PostFXSceneViewerApplication::InitializeLights()
 {
     // Create a directional light and add it to the scene
     std::shared_ptr<DirectionalLight> directionalLight = std::make_shared<DirectionalLight>();
-    directionalLight->SetDirection(glm::vec3(0.0f, 0.2f, -0.3f)); // It will be normalized inside the function
+    directionalLight->SetDirection(glm::vec3(-0.44137f, -0.88892f, -0.122531f)); // This was a pain to figure out
     directionalLight->SetIntensity(3.0f);
     m_scene.AddSceneNode(std::make_shared<SceneLight>("directional light", directionalLight));
-
-    // Create a point light and add it to the scene
-    /*std::shared_ptr<PointLight> pointLight = std::make_shared<PointLight>();
-    pointLight->SetPosition(glm::vec3(0, 0, 0));
-    pointLight->SetDistanceAttenuation(glm::vec2(5.0f, 10.0f));
-    m_scene.AddSceneNode(std::make_shared<SceneLight>("point light", pointLight));*/
 }
-
 
 void PostFXSceneViewerApplication::InitializeMaterials()
 {
@@ -241,7 +239,16 @@ void PostFXSceneViewerApplication::InitializeMaterials()
         // Get transform related uniform locations
         ShaderProgram::Location worldViewMatrixLocation = shaderProgramPtr->GetUniformLocation("WorldViewMatrix");
         ShaderProgram::Location worldViewProjMatrixLocation = shaderProgramPtr->GetUniformLocation("WorldViewProjMatrix");
+
+        // Vert
         ShaderProgram::Location timeLocation = shaderProgramPtr->GetUniformLocation("Time");
+        ShaderProgram::Location windStrengthLocation = shaderProgramPtr->GetUniformLocation("WindStrength");
+        ShaderProgram::Location swayFrequencyLocation = shaderProgramPtr->GetUniformLocation("SwayFrequency");
+
+        // Frag
+        ShaderProgram::Location bottomColorLocation = shaderProgramPtr->GetUniformLocation("BottomColor");
+        ShaderProgram::Location topColorLocation = shaderProgramPtr->GetUniformLocation("TopColor");
+        ShaderProgram::Location gradientBiasLocation = shaderProgramPtr->GetUniformLocation("GradientBias");
 
         // Register shader with renderer
         m_renderer.RegisterShaderProgram(shaderProgramPtr,
@@ -249,7 +256,16 @@ void PostFXSceneViewerApplication::InitializeMaterials()
             {
                 shaderProgram.SetUniform(worldViewMatrixLocation, camera.GetViewMatrix() * worldMatrix);
                 shaderProgram.SetUniform(worldViewProjMatrixLocation, camera.GetViewProjectionMatrix() * worldMatrix);
+
+                // Grass Vert Shader
                 shaderProgram.SetUniform(timeLocation, GetCurrentTime()); // Give the time for the wind shader
+                shaderProgram.SetUniform(windStrengthLocation, m_windStrength); 
+                shaderProgram.SetUniform(swayFrequencyLocation, m_windSwayFreq);
+
+                // Grass Frag Shader
+                shaderProgram.SetUniform(bottomColorLocation, m_bottomColor);
+                shaderProgram.SetUniform(topColorLocation, m_topColor);
+                shaderProgram.SetUniform(gradientBiasLocation, m_gradientBias);
             },
             nullptr
         );
@@ -257,12 +273,16 @@ void PostFXSceneViewerApplication::InitializeMaterials()
         ShaderUniformCollection::NameSet filteredUniforms;
         filteredUniforms.insert("WorldViewMatrix");
         filteredUniforms.insert("WorldViewProjMatrix");
-        //filteredUniforms.insert("Time");
 
         // Create material
         m_grassMaterial = std::make_shared<Material>(shaderProgramPtr, filteredUniforms);
         m_grassMaterial->SetUniformValue("Color", glm::vec3(1.0f));
         m_grassMaterial->SetUniformValue("Time", 0.0f);
+        m_grassMaterial->SetUniformValue("WindStrength", m_windStrength);
+        m_grassMaterial->SetUniformValue("SwayFrequency", m_windSwayFreq);
+        m_grassMaterial->SetUniformValue("BottomColor", m_bottomColor);
+        m_grassMaterial->SetUniformValue("TopColor", m_topColor);
+        m_grassMaterial->SetUniformValue("GradientBias", m_gradientBias);
     }
 }
 
@@ -301,7 +321,7 @@ void PostFXSceneViewerApplication::InitializeModels()
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::SpecularTexture, "SpecularTexture");
 
-    unsigned int grassCount = 100000;
+    unsigned int grassCount = 150000;
 
     // Configure loader
     ModelLoader grassLoader(m_grassMaterial);
@@ -326,14 +346,14 @@ void PostFXSceneViewerApplication::InitializeModels()
     grassLoader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
     grassLoader.SetMaterialProperty(ModelLoader::MaterialProperty::SpecularTexture, "SpecularTexture");
 
+    std::shared_ptr<Transform> planeTransform = std::make_shared<Transform>();
+    planeTransform->SetTranslation(glm::vec3(100, 0, 100));
 
     // Load models
     std::shared_ptr<Model> dirtPlane = loader.LoadShared("models/plane/plane.obj");
-    m_scene.AddSceneNode(std::make_shared<SceneModel>("plane", dirtPlane));
+    m_scene.AddSceneNode(std::make_shared<SceneModel>("plane", dirtPlane, planeTransform));
 
-    // Offset grass transform to align with dirt plane
     std::shared_ptr<Transform> grassTransform = std::make_shared<Transform>();
-    grassTransform->SetTranslation(glm::vec3(-5, 0, -5));
 
     std::shared_ptr<Model> grass = grassLoader.LoadShared("models/grass/grass.obj");
     m_scene.AddSceneNode(std::make_shared<SceneModel>("grass", grass, grassTransform));
@@ -342,53 +362,12 @@ void PostFXSceneViewerApplication::InitializeModels()
     VertexAttribute columnAttribute(Data::Type::Float, 4);
 
     // Set bounds of our grass
-    glm::vec3 grassPosBounds(10, 0, 10); // Max deviation from origin
+    glm::vec3 grassPosBounds(40, 0, 40); // Max deviation from origin
     glm::vec2 grassRotBounds(-25, 25); // Min to Max
-    glm::vec2 grassScaleBounds(0.6f, 1.3f); // Min to Max
+    glm::vec2 grassScaleBounds(0.6f, 1.5f); // Min to Max
 
-    // Creating the offsets to insert into my vert shader for instancing
-    std::vector<glm::mat4> offsets;
-    for (int i = 0; i < grassCount; i++) {
-        // Position
-        glm::vec3 offset(0, 0, 0);
-        offset.x = glm::linearRand(0.0f, grassPosBounds.x);
-        offset.z = glm::linearRand(0.0f, grassPosBounds.z);
-
-        // Scale
-        float scaleFactor = glm::linearRand(grassScaleBounds.x, grassScaleBounds.y);
-        glm::mat4 scaleTransform = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor, scaleFactor * 3, scaleFactor));
-
-        // Combine all transformations
-        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 0, offset.z)) * scaleTransform;
-        
-        offsets.push_back(offsetTransform);
-    }
-
-    Mesh& mesh = grass->GetMesh();
-
-    // Adding your vertex data in a new VBO
-    int vboIndex = mesh.AddVertexData<glm::mat4>(offsets);
-    VertexBufferObject& vbo = mesh.GetVertexBuffer(vboIndex);
-
-    // Get the existing VAO for your submesh
-    int vaoIndex = mesh.GetSubmesh(0).vaoIndex; // Assuming only one submesh
-    VertexArrayObject& vao = mesh.GetVertexArray(vaoIndex);
-
-    vao.Bind();
-    vbo.Bind();
-
-    int location = 5; //TODO: Find your attribute location by name
-    int offset = 0; // Data starts at the beginning of the buffer
-    int stride = 4 * columnAttribute.GetSize(); // Each vertex data is one matrix apart from each other
-    for (int i = 0; i < 4; i++)
-    {
-        vao.SetAttribute(location, columnAttribute, offset, stride);
-        location++;
-        offset += columnAttribute.GetSize();
-        glVertexAttribDivisor(5 + (1 * i), 1);
-    }
-    VertexBufferObject::Unbind();
-    VertexArrayObject::Unbind();
+    // MAKE GRASS
+    InitializeInstancing(grass->GetMesh(), grassCount, grassPosBounds, grassRotBounds, grassScaleBounds, columnAttribute);
 }
 
 void PostFXSceneViewerApplication::InitializeFramebuffers()
@@ -499,6 +478,52 @@ void PostFXSceneViewerApplication::InitializeRenderer()
     m_renderer.AddRenderPass(std::make_unique<PostFXRenderPass>(m_composeMaterial, m_renderer.GetDefaultFramebuffer()));
 }
 
+void PostFXSceneViewerApplication::InitializeInstancing(Mesh& mesh, unsigned int instanceCount, glm::vec3 tBounds, glm::vec2 rBounds, glm::vec2 sBounds, VertexAttribute attr)
+{
+
+    // Creating the offsets to insert into my vert shader for instancing
+    std::vector<glm::mat4> offsets;
+    for (int i = 0; i < instanceCount; i++) {
+        // Position
+        glm::vec3 offset(0, 0, 0);
+        offset.x = glm::linearRand(0.0f, tBounds.x);
+        offset.z = glm::linearRand(0.0f, tBounds.z);
+
+        // Scale
+        float scaleFactor = glm::linearRand(sBounds.x, sBounds.y);
+        glm::mat4 scaleTransform = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor, scaleFactor * 3, scaleFactor));
+
+        // Combine all transformations
+        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 0, offset.z)) * scaleTransform;
+
+        offsets.push_back(offsetTransform);
+    }
+
+    // Adding vertex data in a new VBO
+    int vboIndex = mesh.AddVertexData<glm::mat4>(offsets);
+    VertexBufferObject& vbo = mesh.GetVertexBuffer(vboIndex);
+
+    // Get the existing VAO
+    int vaoIndex = mesh.GetSubmesh(0).vaoIndex; // Assuming only one submesh
+    VertexArrayObject& vao = mesh.GetVertexArray(vaoIndex);
+
+    vao.Bind();
+    vbo.Bind();
+
+    int location = 5;
+    int offset = 0;
+    int stride = 4 * attr.GetSize();
+    for (int i = 0; i < 4; i++)
+    {
+        vao.SetAttribute(location, attr, offset, stride);
+        location++;
+        offset += attr.GetSize();
+        glVertexAttribDivisor(5 + (1 * i), 1);
+    }
+    VertexBufferObject::Unbind();
+    VertexArrayObject::Unbind();
+}
+
 std::shared_ptr<Material> PostFXSceneViewerApplication::CreatePostFXMaterial(const char* fragmentShaderPath, std::shared_ptr<Texture2DObject> sourceTexture)
 {
     // We could keep this vertex shader and reuse it, but it looks simpler this way
@@ -590,6 +615,36 @@ void PostFXSceneViewerApplication::RenderGUI()
             if (ImGui::DragFloat("Bloom Intensity", &m_bloomIntensity, 0.1f, 0.0f, 5.0f))
             {
                 m_bloomMaterial->SetUniformValue("Intensity", m_bloomIntensity);
+            }
+        }
+    }
+
+    if (auto window = m_imGui.UseWindow("Grass"))
+    {
+        if (m_grassMaterial)
+        {
+            if (ImGui::SliderFloat("Wind Strength", &m_windStrength, 0.01f, 10.0f))
+            {
+                m_grassMaterial->SetUniformValue("WindStrength", m_windStrength);
+            }
+            if (ImGui::SliderFloat("Sway Frequency", &m_windSwayFreq, 0.01f, 100.0f))
+            {
+                m_grassMaterial->SetUniformValue("SwayFrequency", m_windSwayFreq);
+            }
+
+            ImGui::Separator();
+
+            if (ImGui::ColorEdit3("Bottom Color", &m_bottomColor[0]))
+            {
+                m_grassMaterial->SetUniformValue("BottomColor", m_bottomColor);
+            }
+            if (ImGui::ColorEdit3("Top Color", &m_topColor[0]))
+            {
+                m_grassMaterial->SetUniformValue("TopColor", m_topColor);
+            }
+            if (ImGui::SliderFloat("Gradient Bias", &m_gradientBias, 0.01f, 0.7f))
+            {
+                m_grassMaterial->SetUniformValue("GradientBias", m_gradientBias);
             }
         }
     }

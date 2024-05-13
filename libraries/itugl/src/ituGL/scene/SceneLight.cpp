@@ -5,6 +5,7 @@
 #include <ituGL/lighting/SpotLight.h>
 #include <ituGL/scene/Transform.h>
 #include <ituGL/scene/SceneVisitor.h>
+#include <iostream>
 
 SceneLight::SceneLight(const std::string& name, std::shared_ptr<Light> light) : SceneNode(name), m_light(light)
 {
@@ -45,6 +46,7 @@ void SceneLight::MatchLightToTransform()
         m_light->SetPosition(position);
         glm::vec3 direction = glm::mat3(m_transform->GetRotationMatrix()) * glm::vec3(0.0f, -1.0f, 0.0f);
         m_light->SetDirection(direction);
+        //std::cout << m_light->GetDirection().x << ", " << m_light->GetDirection().y << ", " << m_light->GetDirection().z;
     }
 }
 
