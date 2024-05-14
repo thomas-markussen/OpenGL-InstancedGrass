@@ -321,7 +321,7 @@ void PostFXSceneViewerApplication::InitializeModels()
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::NormalTexture, "NormalTexture");
     loader.SetMaterialProperty(ModelLoader::MaterialProperty::SpecularTexture, "SpecularTexture");
 
-    unsigned int grassCount = 150000;
+    unsigned int grassCount = 150000; // 500.000 is where my system begins to struggle
 
     // Configure loader
     ModelLoader grassLoader(m_grassMaterial);
@@ -368,6 +368,52 @@ void PostFXSceneViewerApplication::InitializeModels()
 
     // MAKE GRASS
     InitializeInstancing(grass->GetMesh(), grassCount, grassPosBounds, grassRotBounds, grassScaleBounds, columnAttribute);
+}
+
+void PostFXSceneViewerApplication::InitializeInstancing(Mesh& mesh, unsigned int instanceCount, glm::vec3 tBounds, glm::vec2 rBounds, glm::vec2 sBounds, VertexAttribute attr)
+{
+
+    // Creating the offsets to insert into my vert shader for instancing
+    std::vector<glm::mat4> offsets;
+    for (int i = 0; i < instanceCount; i++) {
+        // Position
+        glm::vec3 offset(0, 0, 0);
+        offset.x = glm::linearRand(0.0f, tBounds.x);
+        offset.z = glm::linearRand(0.0f, tBounds.z);
+
+        // Scale
+        float scaleFactor = glm::linearRand(sBounds.x, sBounds.y);
+        glm::mat4 scaleTransform = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor, scaleFactor * 3, scaleFactor));
+
+        // Combine all transformations
+        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 0, offset.z)) * scaleTransform;
+
+        offsets.push_back(offsetTransform);
+    }
+
+    // Adding vertex data in a new VBO
+    int vboIndex = mesh.AddVertexData<glm::mat4>(offsets);
+    VertexBufferObject& vbo = mesh.GetVertexBuffer(vboIndex);
+
+    // Get the existing VAO
+    int vaoIndex = mesh.GetSubmesh(0).vaoIndex; // Assuming only one submesh
+    VertexArrayObject& vao = mesh.GetVertexArray(vaoIndex);
+
+    vao.Bind();
+    vbo.Bind();
+
+    int location = 5;
+    int offset = 0;
+    int stride = 4 * attr.GetSize();
+    for (int i = 0; i < 4; i++)
+    {
+        vao.SetAttribute(location, attr, offset, stride);
+        location++;
+        offset += attr.GetSize();
+        glVertexAttribDivisor(5 + (1 * i), 1);
+    }
+    VertexBufferObject::Unbind();
+    VertexArrayObject::Unbind();
 }
 
 void PostFXSceneViewerApplication::InitializeFramebuffers()
@@ -478,51 +524,6 @@ void PostFXSceneViewerApplication::InitializeRenderer()
     m_renderer.AddRenderPass(std::make_unique<PostFXRenderPass>(m_composeMaterial, m_renderer.GetDefaultFramebuffer()));
 }
 
-void PostFXSceneViewerApplication::InitializeInstancing(Mesh& mesh, unsigned int instanceCount, glm::vec3 tBounds, glm::vec2 rBounds, glm::vec2 sBounds, VertexAttribute attr)
-{
-
-    // Creating the offsets to insert into my vert shader for instancing
-    std::vector<glm::mat4> offsets;
-    for (int i = 0; i < instanceCount; i++) {
-        // Position
-        glm::vec3 offset(0, 0, 0);
-        offset.x = glm::linearRand(0.0f, tBounds.x);
-        offset.z = glm::linearRand(0.0f, tBounds.z);
-
-        // Scale
-        float scaleFactor = glm::linearRand(sBounds.x, sBounds.y);
-        glm::mat4 scaleTransform = glm::scale(glm::mat4(1.0f), glm::vec3(scaleFactor, scaleFactor * 3, scaleFactor));
-
-        // Combine all transformations
-        glm::mat4 offsetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(offset.x, 0, offset.z)) * scaleTransform;
-
-        offsets.push_back(offsetTransform);
-    }
-
-    // Adding vertex data in a new VBO
-    int vboIndex = mesh.AddVertexData<glm::mat4>(offsets);
-    VertexBufferObject& vbo = mesh.GetVertexBuffer(vboIndex);
-
-    // Get the existing VAO
-    int vaoIndex = mesh.GetSubmesh(0).vaoIndex; // Assuming only one submesh
-    VertexArrayObject& vao = mesh.GetVertexArray(vaoIndex);
-
-    vao.Bind();
-    vbo.Bind();
-
-    int location = 5;
-    int offset = 0;
-    int stride = 4 * attr.GetSize();
-    for (int i = 0; i < 4; i++)
-    {
-        vao.SetAttribute(location, attr, offset, stride);
-        location++;
-        offset += attr.GetSize();
-        glVertexAttribDivisor(5 + (1 * i), 1);
-    }
-    VertexBufferObject::Unbind();
-    VertexArrayObject::Unbind();
-}
 
 std::shared_ptr<Material> PostFXSceneViewerApplication::CreatePostFXMaterial(const char* fragmentShaderPath, std::shared_ptr<Texture2DObject> sourceTexture)
 {
